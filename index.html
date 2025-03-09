@@ -111,6 +111,21 @@
             -moz-appearance: none;
         }
 
+        .options-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Responsive adjustment for mobile */
+        @media (max-width: 600px) {
+            .options-group {
+                grid-template-columns: 1fr;
+            }
+        }
+
+
         .select-container::after {
             content: '▼';
             position: absolute;
@@ -255,18 +270,34 @@
             <video id="video" controls></video>
             <p class="file-name" id="fileName"></p>
         </div>
-
         <div class="controls">
-            <div class="select-container">
-                <select id="rotationAngle">
-                    <option value="" disabled selected>Select rotation angle</option>
-                    <option value="90cw">90°</option>
-                    <option value="180">180°</option>
-                    <option value="90ccw">270°</option>
-                </select>
+            <!-- Group the selection options together -->
+            <div class="options-group">
+                <div class="select-container">
+                    <select id="rotationAngle">
+                        <option value="" disabled selected>Select rotation angle</option>
+                        <option value="90cw">90°</option>
+                        <option value="180">180°</option>
+                        <option value="90ccw">270°</option>
+                    </select>
+                </div>
+
+                <!-- New speed selector with matching styling -->
+                <div class="select-container">
+                    <select id="videoSpeed">
+                        <option value="" disabled selected>Select video speed</option>
+                        <option value="0.25">0.25x (Slow)</option>
+                        <option value="0.5">0.5x (Slow)</option>
+                        <option value="0.75">0.75x (Slow)</option>
+                        <option value="1">1x (Normal)</option>
+                        <option value="1.25">1.25x (Fast)</option>
+                        <option value="1.5">1.5x (Fast)</option>
+                        <option value="2">2x (Fast)</option>
+                    </select>
+                </div>
             </div>
 
-            <button id="downloadBtn" disabled>Download Rotated Video</button>
+            <button id="downloadBtn" disabled>Download Modified Video</button>
         </div>
 
         <!-- Buy Me a Coffee Button -->
