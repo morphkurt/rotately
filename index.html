@@ -11,7 +11,6 @@
                 j = d.createElement(s), dl = l != 'dataLayer' ? '&l=' + l : ''; j.async = true; j.src =
                     'https://www.googletagmanager.com/gtm.js?id=' + i + dl; f.parentNode.insertBefore(j, f);
         })(window, document, 'script', 'dataLayer', 'GTM-N6RHQZWF');</script>
-    <!-- End Google Tag Manager -->
     <meta name="description"
         content="Video Rotation Tool - Rotate your videos quickly and for free, offline, without the need for special tools or technical knowledge. Our simple tool allows you to easily rotate videos in just a few clicks. Fast, efficient, and perfect for everyone!">
     <link rel=" icon" href="favicon.ico" type="image/x-icon" />
@@ -292,6 +291,7 @@
             const downloadBtn = document.getElementById('downloadBtn');
             let currentMatrix = null;
             let fileBuffer;
+            let fileSize;
 
             let originalVideo = null;
 
@@ -344,6 +344,18 @@
                 video.src = videoURL;
                 fileName.textContent = file.name;
 
+                video.onloadedmetadata = function () {
+                    const videoDuration = Math.round(video.duration); // Duration in seconds
+                    // Push event to GTM dataLayer
+                    window.dataLayer = window.dataLayer || [];
+                    window.dataLayer.push({
+                        event: "video_upload",
+                        video_name: file.name,
+                        video_size: file.size, // In bytes
+                        video_duration: videoDuration // In seconds
+                    });
+                };
+
                 videoPreview.classList.remove('hidden');
 
                 // Enable download button when both video and rotation angle are selected
@@ -390,11 +402,25 @@
 
                     // Optionally, revoke the object URL after download to free memory
                     URL.revokeObjectURL(url);
+                    // Push event to GTM dataLayer
+                    window.dataLayer = window.dataLayer || [];
+                    window.dataLayer.push({
+                        event: "video_rotate_success",
+                        video_angle: rotationAngle.value,
+                        video_name: fileName.textContent
+                    });
                 } else {
                     document.getElementById('errorMessage').classList.remove('hidden');
+                    window.dataLayer = window.dataLayer || [];
+                    window.dataLayer.push({
+                        event: "video_rotate_failure",
+                        video_angle: rotationAngle.value,
+                        video_name: fileName.textContent
+                    });
                 }
             });
         });
     </script>
 </body>
+
 </html>
