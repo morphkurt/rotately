@@ -292,24 +292,32 @@
 
         .trim-slider {
             position: relative;
-            height: 6px;
+            height: 8px;
+            /* Slightly thicker for better visibility */
             background-color: #ddd;
-            border-radius: 3px;
-            margin: 1.5rem 0;
+            border-radius: 4px;
+            margin: 2rem 0;
+            /* More vertical space for touch */
         }
 
         .trim-handle {
             position: absolute;
-            width: 16px;
-            height: 16px;
+            width: 24px;
+            /* Increased from 16px for better touch target */
+            height: 24px;
+            /* Increased from 16px for better touch target */
             background-color: var(--primary-color);
             border-radius: 50%;
-            top: -5px;
+            top: -9px;
+            /* Adjusted for the larger size */
             transform: translateX(-50%);
-            /* Center the handle on its position */
             cursor: pointer;
             z-index: 5;
-            /* Ensure handles appear above other elements */
+            /* Add visual cue for draggability */
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            border: 2px solid #fff;
+            /* Disable default touch behaviors */
+            touch-action: none;
         }
 
         .trim-handle.start {
@@ -325,12 +333,9 @@
         }
 
         .trim-progress {
-            position: absolute;
-            height: 100%;
-            background-color: var(--secondary-color);
-            border-radius: 3px;
-            z-index: 2;
-            /* Above the base slider but below handles */
+            height: 8px;
+            /* Match the slider height */
+            border-radius: 4px;
         }
 
         .trim-timestamps {
@@ -344,9 +349,12 @@
             gap: 0.5rem;
         }
 
+        /* Make time inputs more touch-friendly */
         .time-input {
-            width: 80px;
-            padding: 0.5rem;
+            width: 120px;
+            padding: 8px;
+            font-size: 16px;
+            /* Better for mobile */
             border: 1px solid #ddd;
             border-radius: 4px;
             text-align: center;
@@ -366,6 +374,28 @@
 
         .secondary-button:hover {
             opacity: 0.9;
+        }
+
+        /* Specific improvements for mobile */
+        @media (max-width: 768px) {
+            .trim-handle {
+                width: 28px;
+                /* Even larger on mobile */
+                height: 28px;
+                top: -10px;
+            }
+
+            .trim-timestamps {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .secondary-button {
+                align-self: center;
+                padding: 10px 15px;
+                margin-top: 10px;
+                width: 100%;
+            }
         }
     </style>
 </head>
@@ -545,10 +575,8 @@
                 video.onloadedmetadata = function () {
                     const videoDuration = Math.round(video.duration); // Duration in seconds
                     // Format duration as MM:SS
-                    const minutes = Math.floor(videoDuration / 60);
-                    const seconds = Math.floor(videoDuration % 60);
                     document.getElementById('endTime').value =
-                        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                        formatTime(videoDuration)
 
                     // Push event to GTM dataLayer
                     window.dataLayer = window.dataLayer || [];
@@ -637,11 +665,40 @@
             });
         });
 
+        // Format time from seconds to MM:SS format
+        function formatTime(timeInSeconds) {
+            if (typeof timeInSeconds !== 'number' || timeInSeconds < 0) {
+                throw new Error('Invalid input: time must be a non-negative number');
+            }
+
+            const hours = Math.floor(timeInSeconds / 3600);
+            const minutes = Math.floor((timeInSeconds % 3600) / 60);
+            const seconds = Math.floor(timeInSeconds % 60);
+            const milliseconds = Math.round((timeInSeconds % 1) * 1000);
+
+            return (
+                String(hours).padStart(2, '0') + ':' +
+                String(minutes).padStart(2, '0') + ':' +
+                String(seconds).padStart(2, '0') + '.' +
+                String(milliseconds).padStart(3, '0')
+            );
+        }
+
 
         // Parse time from MM:SS format to seconds
         function parseTime(timeString) {
-            const [minutes, seconds] = timeString.split(':').map(Number);
-            return minutes * 60 + seconds;
+            const regex = /^(\d{2}):(\d{2}):(\d{2})\.(\d{3})$/;
+            const match = timeString.match(regex);
+            if (!match) {
+                throw new Error('Invalid timestamp format. Expected HH:MM:SS.mmm');
+            }
+
+            const hours = parseInt(match[1], 10);
+            const minutes = parseInt(match[2], 10);
+            const seconds = parseInt(match[3], 10);
+            const milliseconds = parseInt(match[4], 10);
+
+            return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
         }
 
 
@@ -668,22 +725,16 @@
 
                 // Format and set initial end time value
                 endTimeInput.value = formatTime(videoDuration);
-                startTimeInput.value = '00:00';
+                startTimeInput.value = '00:00:00.000';
 
                 // Position end handle at the end (adjust for transform)
                 trimHandleEnd.style.left = '100%';
                 updateProgressBar();
             });
 
-            // Format time from seconds to MM:SS format
-            function formatTime(timeInSeconds) {
-                const minutes = Math.floor(timeInSeconds / 60);
-                const seconds = Math.floor(timeInSeconds % 60);
-                return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-            }
-
             // Update progress bar between handles
             function updateProgressBar() {
+                video.currentTime = startTime;
                 const startPercent = (startTime / videoDuration) * 100;
                 const endPercent = (endTime / videoDuration) * 100;
 
@@ -691,6 +742,14 @@
                 trimProgress.style.width = `${endPercent - startPercent}%`;
             }
 
+            // Handle drag position calculation for both mouse and touch events
+            function calculateDragPosition(clientX) {
+                const sliderRect = trimSlider.getBoundingClientRect();
+                const percentage = Math.min(Math.max(0, (clientX - sliderRect.left) / sliderRect.width), 1);
+                return percentage * videoDuration;
+            }
+
+            // MOUSE EVENTS
             // Handle mouse down on start handle
             trimHandleStart.addEventListener('mousedown', (e) => {
                 e.preventDefault();
@@ -707,23 +766,19 @@
             document.addEventListener('mousemove', (e) => {
                 if (!isDraggingStart && !isDraggingEnd) return;
 
-                const sliderRect = trimSlider.getBoundingClientRect();
-                const percentage = Math.min(Math.max(0, (e.clientX - sliderRect.left) / sliderRect.width), 1);
-                const newTime = percentage * videoDuration;
+                const newTime = calculateDragPosition(e.clientX);
 
                 if (isDraggingStart) {
                     if (newTime < endTime) {
                         startTime = newTime;
-                        // No need to compensate for transform as CSS does that
-                        trimHandleStart.style.left = `${percentage * 100}%`;
+                        trimHandleStart.style.left = `${(startTime / videoDuration) * 100}%`;
                         startTimeInput.value = formatTime(startTime);
                         updateProgressBar();
                     }
                 } else if (isDraggingEnd) {
                     if (newTime > startTime) {
                         endTime = newTime;
-                        // No need to compensate for transform as CSS does that
-                        trimHandleEnd.style.left = `${percentage * 100}%`;
+                        trimHandleEnd.style.left = `${(endTime / videoDuration) * 100}%`;
                         endTimeInput.value = formatTime(endTime);
                         updateProgressBar();
                     }
@@ -736,13 +791,55 @@
                 isDraggingEnd = false;
             });
 
-            // Handle click directly on the slider (jump to position)
+            // TOUCH EVENTS
+            // Handle touch start on start handle
+            trimHandleStart.addEventListener('touchstart', (e) => {
+                e.preventDefault(); // Prevent scrolling when touching the handle
+                isDraggingStart = true;
+            });
+
+            // Handle touch start on end handle
+            trimHandleEnd.addEventListener('touchstart', (e) => {
+                e.preventDefault(); // Prevent scrolling when touching the handle
+                isDraggingEnd = true;
+            });
+
+            // Handle touch move for both handles
+            document.addEventListener('touchmove', (e) => {
+                if (!isDraggingStart && !isDraggingEnd) return;
+
+                // Get the first touch point
+                const touch = e.touches[0];
+                const newTime = calculateDragPosition(touch.clientX);
+
+                if (isDraggingStart) {
+                    if (newTime < endTime) {
+                        startTime = newTime;
+                        trimHandleStart.style.left = `${(startTime / videoDuration) * 100}%`;
+                        startTimeInput.value = formatTime(startTime);
+                        updateProgressBar();
+                    }
+                } else if (isDraggingEnd) {
+                    if (newTime > startTime) {
+                        endTime = newTime;
+                        trimHandleEnd.style.left = `${(endTime / videoDuration) * 100}%`;
+                        endTimeInput.value = formatTime(endTime);
+                        updateProgressBar();
+                    }
+                }
+            }, { passive: false }); // Important for iOS to allow preventDefault
+
+            // Handle touch end to stop dragging
+            document.addEventListener('touchend', () => {
+                isDraggingStart = false;
+                isDraggingEnd = false;
+            });
+
+            // Handle click/tap directly on the slider (jump to position)
             trimSlider.addEventListener('click', (e) => {
                 // Only handle direct clicks on the slider, not on the handles
                 if (e.target === trimSlider || e.target === trimProgress) {
-                    const sliderRect = trimSlider.getBoundingClientRect();
-                    const percentage = (e.clientX - sliderRect.left) / sliderRect.width;
-                    const newTime = percentage * videoDuration;
+                    const newTime = calculateDragPosition(e.clientX);
 
                     // Determine which handle to move based on proximity
                     const distToStart = Math.abs(newTime - startTime);
@@ -761,6 +858,36 @@
                     }
 
                     updateProgressBar();
+                }
+            });
+
+            // Also support tapping on the slider for mobile
+            trimSlider.addEventListener('touchend', (e) => {
+                // Prevent default only if we're not dragging (to allow proper handle dragging)
+                if (!isDraggingStart && !isDraggingEnd) {
+                    // Only handle direct taps on the slider, not on the handles
+                    if (e.target === trimSlider || e.target === trimProgress) {
+                        const touch = e.changedTouches[0];
+                        const newTime = calculateDragPosition(touch.clientX);
+
+                        // Determine which handle to move based on proximity
+                        const distToStart = Math.abs(newTime - startTime);
+                        const distToEnd = Math.abs(newTime - endTime);
+
+                        if (distToStart < distToEnd) {
+                            // Move start handle
+                            startTime = Math.min(newTime, endTime - 1);
+                            trimHandleStart.style.left = `${(startTime / videoDuration) * 100}%`;
+                            startTimeInput.value = formatTime(startTime);
+                        } else {
+                            // Move end handle
+                            endTime = Math.max(newTime, startTime + 1);
+                            trimHandleEnd.style.left = `${(endTime / videoDuration) * 100}%`;
+                            endTimeInput.value = formatTime(endTime);
+                        }
+
+                        updateProgressBar();
+                    }
                 }
             });
 
@@ -843,7 +970,6 @@
                 timelineIndicator.style.display = 'none';
             });
         }
-
     </script>
 </body>
 
