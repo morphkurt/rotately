@@ -72,6 +72,7 @@ export function readUInt32BE(fileBuffer: Uint8Array, offset: number): number {
     return view.getUint32(offset, false); // false for big-endian
 }
 
+
 export function findVideoTkhdOffset(fileBuffer: Uint8Array): [number, number] | null {
     let offset = 0;
     const length = fileBuffer.length;
