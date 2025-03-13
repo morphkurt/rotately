@@ -19,6 +19,8 @@ export interface ElstEntry {
     entryCount: number;       // Number of entries in the edit list
     entries: ElstEntry[];     // Edit list entries
     trackId?: number;         // Track ID this ELST belongs to (optional)
+    timescale: number; // not part of the atom but neded
+    mvhdTimescale: number; // not part of the atom but neded
   }
   
   /**
@@ -37,6 +39,7 @@ export interface ElstEntry {
    */
   export function findElstAtoms(buffer: Uint8Array): ElstAtom[] {
     const elstAtoms: ElstAtom[] = [];
+    const timescales: number[] = [];
     
     // Step 1: Find the moov atom
     const moovAtom = findAtom(buffer, 0, buffer.length, 'moov');
@@ -44,6 +47,16 @@ export interface ElstEntry {
       console.log('No moov atom found');
       return elstAtoms;
     }
+
+        // Step 2: Find all trak atoms within moov
+    const mvhdAtom = findAtom(buffer, moovAtom.offset + 8, moovAtom.offset + moovAtom.size, 'mvhd');
+
+    if (!mvhdAtom) {
+      console.log('No mvhd atom found');
+      return elstAtoms;
+    }
+
+    const mvhdTimescale = parseMvhdTimescale(buffer, mvhdAtom.offset);
     
     // Step 2: Find all trak atoms within moov
     const trakAtoms = findAtoms(buffer, moovAtom.offset + 8, moovAtom.offset + moovAtom.size, 'trak');
@@ -69,7 +82,19 @@ export interface ElstEntry {
       
       // Find edts atom
       const edtsAtom = findAtom(buffer, trakAtom.offset + 8, trakAtom.offset + trakAtom.size, 'edts');
-      
+      const mdiaAtom = findAtom(buffer, trakAtom.offset + 8, trakAtom.offset + trakAtom.size, 'mdia');
+
+      let timescale = 1;
+      if (mdiaAtom) {
+        // Find elst atom within edts
+        const mdhdAtom = findAtom(buffer, mdiaAtom.offset + 8, mdiaAtom.offset + mdiaAtom.size, 'mdhd');
+        if (mdhdAtom) {
+          // Parse the elst atom
+         timescale = parseMdhdTimescale(buffer, mdhdAtom.offset);
+  
+        }
+      }
+
       if (edtsAtom) {
         // Find elst atom within edts
         const elstAtom = findAtom(buffer, edtsAtom.offset + 8, edtsAtom.offset + edtsAtom.size, 'elst');
@@ -78,12 +103,13 @@ export interface ElstEntry {
           const parsedElst = parseElstAtom(buffer, elstAtom.offset);
           if (parsedElst) {
             parsedElst.trackId = trackId;
+            parsedElst.timescale = timescale;
+            parsedElst.mvhdTimescale = mvhdTimescale;
             elstAtoms.push(parsedElst);
           }
         }
-      }
+      }      
     }
-    
     return elstAtoms;
   }
   
@@ -189,7 +215,9 @@ export interface ElstEntry {
         version,
         flags,
         entryCount,
-        entries: []
+        entries: [],
+        timescale: 0,
+        mvhdTimescale: 0,
       };
       
       // Starting point for entries data
@@ -279,61 +307,6 @@ export interface ElstEntry {
     return high * 0x100000000 + low;
   }
 
-  /**
-   * Finds all ELST atoms in an MP4 file by traversing the proper hierarchy
-   * @param buffer - Uint8Array containing the MP4 file data
-   * @returns Array of ELST atoms found in the MP4 file
-   */
-  export function findMvhdTimescales(buffer: Uint8Array): number[] {
-    const timescales: number[] = [];
-    
-    // Step 1: Find the moov atom
-    const moovAtom = findAtom(buffer, 0, buffer.length, 'moov');
-    if (!moovAtom) {
-      console.log('No moov atom found');
-      return timescales;
-    }
-    
-    // Step 2: Find all trak atoms within moov
-    const trakAtoms = findAtoms(buffer, moovAtom.offset + 8, moovAtom.offset + moovAtom.size, 'trak');
-    
-    // Step 3: For each trak, find the edts atom and then the elst atom
-    for (const trakAtom of trakAtoms) {
-      // Find trackID first (in tkhd)
-      let trackId: number | undefined;
-      const tkhdAtom = findAtom(buffer, trakAtom.offset + 8, trakAtom.offset + trakAtom.size, 'tkhd');
-      if (tkhdAtom) {
-        // Version is at offset 8 from tkhd start
-        const version = buffer[tkhdAtom.offset + 8];
-        
-        // Track ID is at different offsets depending on version
-        if (version === 0) {
-          // Version 0: skip 12 bytes (version, flags, creation time, modification time)
-          trackId = readUint32(buffer, tkhdAtom.offset + 20);
-        } else {
-          // Version 1: skip 20 bytes (version, flags, creation time (64-bit), modification time (64-bit))
-          trackId = readUint32(buffer, tkhdAtom.offset + 28);
-        }
-      }
-      
-      // Find edts atom
-      const mdiaAtom = findAtom(buffer, trakAtom.offset + 8, trakAtom.offset + trakAtom.size, 'mdia');
-      
-      if (mdiaAtom) {
-        // Find elst atom within edts
-        const mdhdAtom = findAtom(buffer, mdiaAtom.offset + 8, mdiaAtom.offset + mdiaAtom.size, 'mdhd');
-        if (mdhdAtom) {
-          // Parse the elst atom
-          const timescale = parseMdhdTimescale(buffer, mdhdAtom.offset);
-          if (timescale) {
-            timescales.push(timescale);
-          }
-        }
-      }
-    }
-    return timescales;
-  }
-
    export function parseMdhdTimescale(buffer: Uint8Array, startOffset: number): number {
       /**
        * Parse the MDHD atom to extract the timescale value.
@@ -370,6 +343,83 @@ export interface ElstEntry {
       
       return timescale;
   }
+
+  export function modifyElstAtom(buffer: Uint8Array, elstAtom: ElstAtom, startTimeUs: bigint, endTimeUs: bigint) {
+
+    let byteArray = elstAtom.version == 1 ? new Uint8Array(16): new Uint8Array(8);
+
+    const duration = endTimeUs - startTimeUs;
+    const scaledSegmentDuration = ( duration / BigInt(1_000_000))* BigInt(elstAtom.mvhdTimescale); 
+    
+    const mediaTime = (startTimeUs / BigInt(1_000_000)) * BigInt(elstAtom.timescale);
+  
+    if (elstAtom.version ==1) {
+      byteArray.set(BigIntToUint8Array(scaledSegmentDuration),0)
+      byteArray.set(BigIntToUint8Array(mediaTime),8)
+    } else {
+      byteArray.set(NumberToUint8Array(Number(scaledSegmentDuration)),0)
+      byteArray.set(NumberToUint8Array(Number(mediaTime)),4)
+    }
+
+    buffer.set(byteArray, elstAtom.offset+ 16);
+    
+    function BigIntToUint8Array(value: bigint): Uint8Array {
+      let arr = new Uint8Array(8);
+      for (let i = 0; i < 8; i++) {
+        arr[7 - i] = Number(value & BigInt(0xFF)); // Extract last 8 bits
+        value >>= BigInt(8); // Shift right by 8 bits
+      }
+      return arr;
+    }
+    
+    function NumberToUint8Array(value: number): Uint8Array {
+      let arr = new Uint8Array(4);
+      let tempValue = value >>> 0; // Ensure it's treated as unsigned
+      for (let i = 0; i < 4; i++) {
+        arr[3 - i] = tempValue & 0xFF; // Extract last 8 bits
+        tempValue >>= 8; // Shift right by 8 bits
+      }
+      return arr;
+    }
+
+  }
+
+  export function parseMvhdTimescale(buffer: Uint8Array, startOffset: number): number {
+    /**
+     * Parse the MDHD atom to extract the timescale value.
+     * 
+     * @param data - Binary data containing the MDHD atom
+     * @param startOffset - Offset to the start of the MDHD atom
+     * @returns The timescale value as an integer
+     */
+    
+    // Skip atom size (4 bytes) and atom type (4 bytes)
+    let offset = startOffset + 8;
+    
+    // Get version (1 byte)
+    const version = buffer[offset];
+    offset += 1;
+    
+    // Skip flags (3 bytes)
+    offset += 3;
+    
+    let timescale: number;
+    if (version === 1) {
+        // Version 1: 64-bit creation and modification times
+        // Skip creation_time and modification
+        offset += 16;
+        // Extract timescale (4 bytes)
+        timescale = (buffer[offset] << 24) | (buffer[offset + 1] << 16) | (buffer[offset + 2] << 8) | buffer[offset + 3];
+    } else {
+        // Version 0: 32-bit times
+        // Skip creation_time and modification
+        offset += 8;
+        // Extract timescale (4 bytes)
+        timescale = (buffer[offset] << 24) | (buffer[offset + 1] << 16) | (buffer[offset + 2] << 8) | buffer[offset + 3];
+    }
+    
+    return timescale;
+}
   
   // Example usage:
   /*

@@ -472,6 +472,8 @@
     </div>
     <script type="module">
         import { findVideoTkhdOffset, calculateMatrixOffset, modifyTkhdMatrix, getMatrix } from './dist/mp4_tkhd.js';
+        import { findElstAtoms, modifyElstAtom } from './dist/mp4_elst.js';
+
         document.addEventListener('DOMContentLoaded', function () {
             const uploadArea = document.getElementById('uploadArea');
             const videoInput = document.getElementById('videoInput');
@@ -530,6 +532,9 @@
                 const reader = new FileReader();
                 reader.onload = function (e) {
                     fileBuffer = new Uint8Array(e.target.result);
+                    console.log("File has been fully read.");
+                    console.log("File size:", fileBuffer.length);  // Now you can safely check the length of the buffer
+                    downloadBtn.disabled = false;
                 };
                 reader.readAsArrayBuffer(file);
 
@@ -560,31 +565,39 @@
                 // Add this after videoPreview.classList.remove('hidden');
                 document.getElementById('trimmingControls').classList.remove('hidden');
 
-
                 // Enable download button when both video and rotation angle are selected
                 currentMatrix = null;
-                checkDownloadButtonState();
-            }
-
-            // Handle rotation angle change
-            rotationAngle.addEventListener('change', checkDownloadButtonState);
-
-            function checkDownloadButtonState() {
-                if (originalVideo && rotationAngle.value) {
-                    downloadBtn.disabled = false;
-                } else {
-                    downloadBtn.disabled = true;
-                }
             }
 
             // Handle video download button click
             // (Placeholder - no actual rotation implementation)
             downloadBtn.addEventListener('click', () => {
+
+                const startTimeInput = document.getElementById('startTime');
+                const endTimeInput = document.getElementById('endTime');
+
                 console.log('Download button clicked');
                 console.log('Video:', originalVideo.name);
                 console.log('Selected rotation angle:', rotationAngle.value);
+
+                const startTimeUs = BigInt(parseTime(startTimeInput.value) * 1_000_000);
+                const endTimeUs = BigInt(parseTime(endTimeInput.value) * 1_000_000);
+
+                console.log(startTimeUs);
+
                 // Now you can call your functions using the fileBuffer
                 const tkhdOffsetAndSize = findVideoTkhdOffset(fileBuffer);
+                const elstAtoms = findElstAtoms(fileBuffer);
+
+                if (elstAtoms) {
+                    for (let index = 0; index < elstAtoms.length; index++) {
+                        let atom = elstAtoms[index];
+                        if (atom.entries.length == 1) {
+                            modifyElstAtom(fileBuffer, atom, startTimeUs, endTimeUs)
+                        }
+                    }
+                }
+
                 if (tkhdOffsetAndSize) {
                     const matrixOffset = calculateMatrixOffset(fileBuffer, tkhdOffsetAndSize[0]);
                     if (currentMatrix == null) {
@@ -598,7 +611,7 @@
                     // Create a temporary anchor element
                     const link = document.createElement('a');
                     link.href = url;
-                    link.download = rotationAngle.value + '_' + fileName.textContent;
+                    link.download = fileName.textContent;
 
                     // Trigger the download
                     link.click();
@@ -623,6 +636,13 @@
                 }
             });
         });
+
+
+        // Parse time from MM:SS format to seconds
+        function parseTime(timeString) {
+            const [minutes, seconds] = timeString.split(':').map(Number);
+            return minutes * 60 + seconds;
+        }
 
 
         function initializeTrimControls() {
@@ -660,12 +680,6 @@
                 const minutes = Math.floor(timeInSeconds / 60);
                 const seconds = Math.floor(timeInSeconds % 60);
                 return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-            }
-
-            // Parse time from MM:SS format to seconds
-            function parseTime(timeString) {
-                const [minutes, seconds] = timeString.split(':').map(Number);
-                return minutes * 60 + seconds;
             }
 
             // Update progress bar between handles
