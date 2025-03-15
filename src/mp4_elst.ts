@@ -345,6 +345,10 @@ export function parseMdhdTimescale(buffer: Uint8Array, startOffset: number): num
 }
 
 export function modifyElstAtom(buffer: Uint8Array, elstAtom: ElstAtom, startTimeUs: bigint, endTimeUs: bigint) {
+  modifyElstAtomWithMultipleEntries(buffer, elstAtom, startTimeUs, endTimeUs, 1);
+}
+
+export function modifyElstAtomWithMultipleEntries(buffer: Uint8Array, elstAtom: ElstAtom, startTimeUs: bigint, endTimeUs: bigint, index: number) {
 
   let byteArray = elstAtom.version == 1 ? new Uint8Array(16) : new Uint8Array(8);
 
@@ -353,15 +357,17 @@ export function modifyElstAtom(buffer: Uint8Array, elstAtom: ElstAtom, startTime
 
   const mediaTime = BigInt(Math.round(Number(startTimeUs) * (elstAtom.timescale) / Number(1_000_000)));
 
+
   if (elstAtom.version == 1) {
-    byteArray.set(BigIntToUint8Array(scaledSegmentDuration), 0)
-    byteArray.set(BigIntToUint8Array(mediaTime), 8)
+    byteArray.set(BigIntToUint8Array(scaledSegmentDuration), 0);
+    byteArray.set(BigIntToUint8Array(mediaTime), 8);
   } else {
-    byteArray.set(NumberToUint8Array(Number(scaledSegmentDuration)), 0)
-    byteArray.set(NumberToUint8Array(Number(mediaTime)), 4)
+    byteArray.set(NumberToUint8Array(Number(scaledSegmentDuration)), 0);
+    byteArray.set(NumberToUint8Array(Number(mediaTime)), 4);
   }
 
-  buffer.set(byteArray, elstAtom.offset + 16);
+  let offset = elstAtom.version == 1 ? (index - 1) * 20 : (index - 1) * 12
+  buffer.set(byteArray, offset + elstAtom.offset + 16);
 
   function BigIntToUint8Array(value: bigint): Uint8Array {
     let arr = new Uint8Array(8);
