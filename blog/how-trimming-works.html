@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -563,7 +562,7 @@
 
                 <h2>Try It Yourself</h2>
 
-                <p>If you'd like to experiment with edit lists, hear is hack where the video's elst atoms are
+                <p>If you'd like to experiment with edit lists, here is hack where the video's elst atoms are
                     manipulated according to what is given by the form.</p>
                 <p>There is no html trickery, just modifying the buffer directly and loaded to video element.</p>
 
@@ -766,9 +765,7 @@
                 video.src = videoURL;
             }
 
-            function downloadVideo() {
-                console.log("tr")
-                // Create and trigger download
+            function downloadVideo() {                // Create and trigger download
                 const blob = new Blob([uint8Array], { type: 'video/mp4' });
                 const url = URL.createObjectURL(blob);
 
